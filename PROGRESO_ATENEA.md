@@ -47,6 +47,19 @@ $env:EXPO_PUBLIC_ATENEA_JAVA_DIAGNOSTIC = 'true'
 node .\node_modules\expo\bin\cli start --lan --port 8081
 ```
 
-## Pendiente de autorización
+## Paso 4A · SQLite nativo para alertas
 
-Definir el contrato de persistencia de alertas y agregar un proveedor SQLite que mantenga a Firebase como opción predeterminada. La implementación Java usará `SQLiteOpenHelper` con apertura diferida, operaciones asíncronas y trabajo de disco fuera del hilo de interfaz.
+- `AteneaDatabaseHelper.java` abre bajo demanda `atenea-alerts.db`, versión 1. La tabla `alerts` usa `id` como clave primaria de texto y conserva `groupId`, `userId`, `createdBy`, `category`, `title`, `description`, `soundType`, `latitude`, `longitude`, `city`, `district`, `mediaUrl`, `mediaType` y `createdAt`. Las coordenadas son reales opcionales y la fecha se guarda como entero en milisegundos Unix. Hay índices para listar por fecha y por grupo y fecha.
+- `AteneaAlertDao.java` crea, lista, filtra por grupo, consulta por ID, actualiza y elimina. Usa parámetros, cierra los cursores con try-with-resources y conserva el ID y la fecha original al actualizar. Cada escritura es una sentencia atómica. `SQLiteOpenHelper` administra la transacción de creación del esquema.
+- `AteneaBridgeModule.java` ejecuta el acceso a disco en un executor de un hilo, comunica errores mediante promesas y cierra el helper al invalidarse. `specs/NativeAteneaBridge.ts` y `src/services/nativeBridge.ts` exponen las operaciones y convierten las fechas de y a `Date`.
+- `index.ts` habilita `src/services/sqliteAlertDiagnostic.ts` únicamente en Android de desarrollo, mediante variables de Metro. El servicio de alertas y las pantallas continúan usando Firebase.
+
+### Verificación local
+
+Pasaron `tsc --noEmit` y `:app:assembleDebug -PreactNativeArchitectures=x86_64`. El APK se instaló en el emulador API 37. El puente devolvió `ATENEA_JAVA_OK`. La fase `seed` creó un registro, comprobó la lectura por ID, el listado general y el filtro por grupo, y actualizó el título y la ubicación. Tras un cierre completo y un arranque en otro proceso, la fase `verify` comprobó que los cambios persistían, eliminó únicamente el registro de prueba y verificó su ausencia. Logcat mostró `SEED_OK` y `PERSISTENCE_AND_DELETE_OK`. Se mantuvo la advertencia de Firebase Messaging al registrar notificaciones push.
+
+Para repetir la prueba, iniciar Metro con `EXPO_PUBLIC_ATENEA_SQLITE_DIAGNOSTIC=seed` y `EXPO_PUBLIC_ATENEA_SQLITE_RUN_ID` igual a un GUID nuevo de 32 caracteres hexadecimales en minúscula. Tras observar `SEED_OK`, cerrar la aplicación con `adb shell am force-stop com.atenea.app`. Reiniciar Metro con la fase `verify` y el mismo identificador, y abrir ATENEA para comprobar persistencia y borrar el registro de prueba. Con la variable de fase ausente, el diagnóstico queda desactivado.
+
+## Pendiente de autorización para el paso 4B
+
+Definir un contrato común y un selector de proveedor para alertas, con Firebase por defecto. El proveedor SQLite deberá conservar las suscripciones por grupos, emitir una lista inicial y refrescarla después de cada escritura. Las pantallas actuales permiten crear y consultar. Exponer la edición y el borrado en la interfaz requerirá una decisión aparte.

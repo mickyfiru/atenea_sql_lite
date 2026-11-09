@@ -9,6 +9,17 @@ import { getJavaBridgeDiagnostic } from './src/services/nativeBridge';
 // the environment is set up appropriately
 registerRootComponent(App);
 
+if (__DEV__ && Platform.OS === 'android') {
+  const phase = process.env.EXPO_PUBLIC_ATENEA_SQLITE_DIAGNOSTIC;
+  if (phase === 'seed' || phase === 'verify') {
+    void import('./src/services/sqliteAlertDiagnostic')
+      .then(({ runSQLiteAlertDiagnostic }) =>
+        runSQLiteAlertDiagnostic(phase, process.env.EXPO_PUBLIC_ATENEA_SQLITE_RUN_ID ?? ''),
+      )
+      .catch((error) => console.warn('[ATENEA SQLite] Diagnóstico fallido:', error));
+  }
+}
+
 if (
   __DEV__ &&
   Platform.OS === 'android' &&
