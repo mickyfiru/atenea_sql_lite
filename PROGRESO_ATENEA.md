@@ -60,6 +60,27 @@ Pasaron `tsc --noEmit` y `:app:assembleDebug -PreactNativeArchitectures=x86_64`.
 
 Para repetir la prueba, iniciar Metro con `EXPO_PUBLIC_ATENEA_SQLITE_DIAGNOSTIC=seed` y `EXPO_PUBLIC_ATENEA_SQLITE_RUN_ID` igual a un GUID nuevo de 32 caracteres hexadecimales en minúscula. Tras observar `SEED_OK`, cerrar la aplicación con `adb shell am force-stop com.atenea.app`. Reiniciar Metro con la fase `verify` y el mismo identificador, y abrir ATENEA para comprobar persistencia y borrar el registro de prueba. Con la variable de fase ausente, el diagnóstico queda desactivado.
 
-## Pendiente de autorización para el paso 4B
+## Paso 4B · SQLite conectado al flujo original de alertas
 
-Definir un contrato común y un selector de proveedor para alertas, con Firebase por defecto. El proveedor SQLite deberá conservar las suscripciones por grupos, emitir una lista inicial y refrescarla después de cada escritura. Las pantallas actuales permiten crear y consultar. Exponer la edición y el borrado en la interfaz requerirá una decisión aparte.
+- `src/services/alertProvider.ts` define el contrato de escritura y suscripción. `src/services/alerts.ts` conserva las firmas públicas y selecciona Firebase por defecto. SQLite se activa solo en Android con `EXPO_PUBLIC_ATENEA_ALERT_PROVIDER=sqlite`. El selector se aplica también a los consumidores compartidos de alertas del mapa, resumen, asistente y sonidos.
+- `src/services/sqliteAlertProvider.ts` usa el puente Java para insertar y consultar por grupos. Emite una lectura inicial ordenada por fecha y refresca las suscripciones del grupo después de guardar. La cancelación invalida las lecturas en curso. Las pantallas siguen recibiendo fechas como objetos `Date`.
+- La sesión, la ubicación del perfil y las membresías siguen dependiendo de Firebase. SQLite comprueba la membresía de escritura con el servidor y solo muestra alertas de grupos cuya membresía confirma el servidor. Los adjuntos siguen usando Firebase Storage cuando se selecciona un archivo. Los registros SQLite son locales al dispositivo y quedan separados de las alertas de Firestore.
+
+### Verificación local
+
+Pasaron `tsc --noEmit` y `:app:assembleDebug -PreactNativeArchitectures=x86_64`. En el emulador Android API 37 se creó `ATENEA-SQLite-4B-72F1` desde el formulario original del grupo `prueba`. La alerta apareció en Perfil → Revisar alertas, su título se comprobó en `atenea-alerts.db` y siguió visible después de cerrar completamente ATENEA y abrirla en otro proceso. El registro de demostración quedó en el emulador.
+
+Al reiniciar Metro sin el selector, la misma pantalla volvió a mostrar alertas de Firestore y Logcat registró sus snapshots. La alerta local no apareció en ese modo. No se borraron datos de Firebase. Persistió la advertencia de Firebase Messaging al registrar notificaciones push, ajena a la persistencia de alertas. No se probaron individualmente mapa, resumen, asistente y sonidos.
+
+Para activar SQLite en una terminal de PowerShell y arrancar Metro localmente:
+
+```powershell
+$env:EXPO_PUBLIC_ATENEA_ALERT_PROVIDER = 'sqlite'
+node .\node_modules\expo\bin\cli start --lan --port 8081
+```
+
+Para volver al modo predeterminado, reiniciar Metro con `$env:EXPO_PUBLIC_ATENEA_ALERT_PROVIDER = $null` y volver a abrir la aplicación.
+
+## Pendiente · CRUD visual
+
+El formulario y el listado existentes permiten crear y consultar. Queda exponer edición y eliminación desde la interfaz, definir permisos para esas acciones y refrescar las suscripciones tras ambas operaciones.

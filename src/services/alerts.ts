@@ -10,6 +10,7 @@ import {
   type Timestamp,
   type Unsubscribe,
 } from 'firebase/firestore';
+import { Platform } from 'react-native';
 
 import { AlertCategory, CommunityAlert } from '../types/domain';
 import {
@@ -23,6 +24,8 @@ import {
 import { auth, db } from './firebase';
 import { getGroupById } from './groups';
 import { getUserLocation } from './location';
+import type { AlertProvider } from './alertProvider';
+import { assertSQLiteAlertGroupMember, sqliteAlertProvider } from './sqliteAlertProvider';
 
 export const ALERT_CATEGORIES: AlertCategory[] = [
   'Seguridad',
@@ -115,7 +118,7 @@ function snapshotToAlert(snapshot: QueryDocumentSnapshot<DocumentData>): Communi
 }
 
 export async function createAlert(input: CreateAlertInput) {
-  const firestore = assertFirestore();
+  assertFirestore();
   const title = input.title.trim();
   const description = input.description.trim();
   assertAuthenticatedUser(auth?.currentUser, input.userId);
@@ -127,9 +130,13 @@ export async function createAlert(input: CreateAlertInput) {
 
   assertNonEmptyText(title, 'Ingresa un titulo para la alerta.');
 
-  const group = await getGroupById(input.groupId);
-  assertExistingGroup(group);
-  assertGroupMember(group, input.userId);
+  if (useSQLite) {
+    await assertSQLiteAlertGroupMember(input.groupId, input.userId);
+  } else {
+    const group = await getGroupById(input.groupId);
+    assertExistingGroup(group);
+    assertGroupMember(group, input.userId);
+  }
 
   const location = await getUserLocation(input.userId);
   if (location.locationEnabled) {
@@ -150,7 +157,7 @@ export async function createAlert(input: CreateAlertInput) {
         district: '',
       };
 
-  const alertRef = await addDoc(collection(firestore, 'alerts'), {
+  const alertId = await alertProvider.insert({
     groupId: input.groupId,
     userId: input.userId,
     createdBy: input.userId,
@@ -161,15 +168,16 @@ export async function createAlert(input: CreateAlertInput) {
     mediaUrl: input.mediaUrl ?? '',
     mediaType: input.mediaType ?? '',
     ...locationPayload,
-    createdAt: serverTimestamp(),
+    latitude: locationPayload.latitude ?? undefined,
+    longitude: locationPayload.longitude ?? undefined,
   });
 
   try {
     const sounds = await import('./sounds');
     const notifications = await import('./notifications');
-    sounds.markAlertSoundHandled(alertRef.id);
+    sounds.markAlertSoundHandled(alertId);
     await notifications.sendLocalAlertNotification({
-      id: alertRef.id,
+      id: alertId,
       groupId: input.groupId,
       userId: input.userId,
       createdBy: input.userId,
@@ -188,10 +196,10 @@ export async function createAlert(input: CreateAlertInput) {
     console.warn('No se pudo enviar la notificacion local de alerta.', soundError);
   }
 
-  return alertRef.id;
+  return alertId;
 }
 
-export function subscribeAlertsForGroups(
+function subscribeFirestoreAlertsForGroups(
   groupIds: string[],
   onAlerts: (alerts: CommunityAlert[]) => void,
   onError: (error: Error) => void,
@@ -275,3 +283,22 @@ export function subscribeAlertsForGroups(
     unsubscribes.forEach((unsubscribe) => unsubscribe());
   };
 }
+
+const firebaseAlertProvider: AlertProvider = {
+  async insert(alert) {
+    const ref = await addDoc(collection(assertFirestore(), 'alerts'), {
+      ...alert,
+      latitude: alert.latitude ?? null,
+      longitude: alert.longitude ?? null,
+      createdAt: serverTimestamp(),
+    });
+    return ref.id;
+  },
+  subscribe: subscribeFirestoreAlertsForGroups,
+};
+
+const useSQLite =
+  Platform.OS === 'android' && process.env.EXPO_PUBLIC_ATENEA_ALERT_PROVIDER === 'sqlite';
+const alertProvider = useSQLite ? sqliteAlertProvider : firebaseAlertProvider;
+
+export const subscribeAlertsForGroups: AlertProvider['subscribe'] = alertProvider.subscribe;
