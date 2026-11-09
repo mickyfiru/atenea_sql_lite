@@ -2,6 +2,14 @@
   "name": "atenea",
   "version": "1.0.0",
   "main": "index.ts",
+  "codegenConfig": {
+    "name": "AteneaNativeBridgeSpec",
+    "type": "modules",
+    "jsSrcsDir": "specs",
+    "android": {
+      "javaPackageName": "com.atenea.app.bridge"
+    }
+  },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
     "@react-native-async-storage/async-storage": "2.2.0",
