@@ -52,10 +52,14 @@ export const sqliteAlerts = {
     const alert = await requireJavaBridge().findAlert(id);
     return alert ? fromNativeAlert(alert) : null;
   },
-  async update(alert: CommunityAlert): Promise<boolean> {
-    return requireJavaBridge().updateAlert(toNativeAlert(alert));
+  async update(
+    id: string,
+    actorId: string,
+    changes: Pick<CommunityAlert, 'title' | 'description' | 'category'>,
+  ): Promise<boolean> {
+    return requireJavaBridge().updateAlert(id, actorId, changes.title, changes.description, changes.category);
   },
-  async delete(id: string): Promise<boolean> {
-    return requireJavaBridge().deleteAlert(id);
+  async delete(id: string, actorId: string): Promise<boolean> {
+    return requireJavaBridge().deleteAlert(id, actorId);
   },
 };

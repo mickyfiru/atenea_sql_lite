@@ -10,6 +10,8 @@ import com.facebook.react.bridge.WritableMap;
 final class AteneaAlertDao {
   private static final String TABLE = "alerts";
   private static final String BY_ID = "id = ?";
+  private static final String BY_OWNER = BY_ID
+      + " AND COALESCE(NULLIF(createdBy, ''), NULLIF(userId, '')) = ?";
   private static final String[] REQUIRED_TEXT = {
     "id", "groupId", "category", "title", "description", "soundType", "city", "district"
   };
@@ -44,16 +46,17 @@ final class AteneaAlertDao {
     }
   }
 
-  boolean update(ReadableMap alert) {
-    ContentValues changes = values(alert);
-    String id = changes.getAsString("id");
-    changes.remove("id");
-    changes.remove("createdAt");
-    return helper.getWritableDatabase().update(TABLE, changes, BY_ID, new String[] {id}) == 1;
+  boolean update(String id, String actorId, String title, String description, String category) {
+    ContentValues changes = new ContentValues();
+    changes.put("title", title);
+    changes.put("description", description);
+    changes.put("category", category);
+    changes.put("soundType", category);
+    return helper.getWritableDatabase().update(TABLE, changes, BY_OWNER, new String[] {id, actorId}) == 1;
   }
 
-  boolean delete(String id) {
-    return helper.getWritableDatabase().delete(TABLE, BY_ID, new String[] {id}) == 1;
+  boolean delete(String id, String actorId) {
+    return helper.getWritableDatabase().delete(TABLE, BY_OWNER, new String[] {id, actorId}) == 1;
   }
 
   private static ContentValues values(ReadableMap alert) {

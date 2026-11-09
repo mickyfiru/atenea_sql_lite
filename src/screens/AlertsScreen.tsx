@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,12 +11,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AlertComposerModal } from '../components/AlertComposerModal';
 import { AlertDetailModal } from '../components/AlertDetailModal';
 import { AlertRow } from '../components/AlertRow';
 import { colors, radius } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { RootScreenProps } from '../navigation/types';
-import { ALERT_CATEGORIES, subscribeAlertsForGroups } from '../services/alerts';
+import { ALERT_CATEGORIES, canManageAlert, deleteAlert, subscribeAlertsForGroups } from '../services/alerts';
 import { subscribeUserGroups } from '../services/groups';
 import { subscribeUserLocation } from '../services/location';
 import { AlertCategory, CommunityAlert, CommunityGroup, UserLocation } from '../types/domain';
@@ -51,7 +53,9 @@ export function AlertsScreen({ navigation, route }: RootScreenProps<'Alerts'>) {
     (route.params?.initialCategory as AlertCategory | undefined) ?? 'Todas',
   );
   const [distanceFilter, setDistanceFilter] = useState<DistanceFilter>('Todas');
-  const [selectedAlert, setSelectedAlert] = useState<CommunityAlert>();
+  const [selectedAlertId, setSelectedAlertId] = useState<string>();
+  const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -135,6 +139,35 @@ export function AlertsScreen({ navigation, route }: RootScreenProps<'Alerts'>) {
   );
 
   const needsLocation = distanceFilter !== 'Todas' && !userLocation?.locationEnabled;
+  const selectedAlert = alerts.find((alert) => alert.id === selectedAlertId);
+  const canManage = Boolean(selectedAlert && canManageAlert(selectedAlert, user?.uid));
+
+  function confirmDelete() {
+    if (!selectedAlert || !user || !canManage || deleting) {
+      return;
+    }
+    const { id } = selectedAlert;
+    const userId = user.uid;
+    Alert.alert('Eliminar alerta', '¿Quieres eliminar esta alerta?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Eliminar',
+        style: 'destructive',
+        onPress: async () => {
+          setDeleting(true);
+          try {
+            await deleteAlert(id, userId);
+            setSelectedAlertId(undefined);
+            Alert.alert('Alerta eliminada');
+          } catch (deleteError) {
+            Alert.alert('No se pudo eliminar', deleteError instanceof Error ? deleteError.message : 'Intenta nuevamente.');
+          } finally {
+            setDeleting(false);
+          }
+        },
+      },
+    ]);
+  }
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.safe}>
@@ -232,7 +265,10 @@ export function AlertsScreen({ navigation, route }: RootScreenProps<'Alerts'>) {
               <AlertRow
                 alert={alert}
                 group={groupsById.get(alert.groupId)}
-                onPress={() => setSelectedAlert(alert)}
+                onPress={() => {
+                  setEditing(false);
+                  setSelectedAlertId(alert.id);
+                }}
                 userLocation={userLocation}
               />
               {index < filteredAlerts.length - 1 ? <View style={styles.separator} /> : null}
@@ -241,11 +277,23 @@ export function AlertsScreen({ navigation, route }: RootScreenProps<'Alerts'>) {
         </View>
       </ScrollView>
       <AlertDetailModal
-        alert={selectedAlert}
+        alert={editing ? undefined : selectedAlert}
         group={selectedAlert ? groupsById.get(selectedAlert.groupId) : undefined}
-        onClose={() => setSelectedAlert(undefined)}
+        onClose={() => setSelectedAlertId(undefined)}
+        onEdit={canManage ? () => setEditing(true) : undefined}
+        onDelete={canManage ? confirmDelete : undefined}
+        deleting={deleting}
         userLocation={userLocation}
       />
+      {editing && canManage && selectedAlert ? (
+        <AlertComposerModal
+          editingAlert={selectedAlert}
+          groups={groups}
+          onClose={() => setEditing(false)}
+          userId={user?.uid}
+          visible
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

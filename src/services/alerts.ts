@@ -25,7 +25,14 @@ import { auth, db } from './firebase';
 import { getGroupById } from './groups';
 import { getUserLocation } from './location';
 import type { AlertProvider } from './alertProvider';
-import { assertSQLiteAlertGroupMember, sqliteAlertProvider } from './sqliteAlertProvider';
+import {
+  assertSQLiteAlertGroupMember,
+  deleteSQLiteAlert,
+  isAlertOwner,
+  sqliteAlertProvider,
+  updateSQLiteAlert,
+  type AlertEdits,
+} from './sqliteAlertProvider';
 
 export const ALERT_CATEGORIES: AlertCategory[] = [
   'Seguridad',
@@ -302,3 +309,21 @@ const useSQLite =
 const alertProvider = useSQLite ? sqliteAlertProvider : firebaseAlertProvider;
 
 export const subscribeAlertsForGroups: AlertProvider['subscribe'] = alertProvider.subscribe;
+
+export function canManageAlert(alert: CommunityAlert, userId?: string) {
+  return useSQLite && isAlertOwner(alert, userId);
+}
+
+export async function updateAlert(id: string, userId: string, edits: AlertEdits) {
+  if (!useSQLite) {
+    throw new Error('La edición está disponible únicamente en SQLite.');
+  }
+  await updateSQLiteAlert(id, userId, edits);
+}
+
+export async function deleteAlert(id: string, userId: string) {
+  if (!useSQLite) {
+    throw new Error('La eliminación está disponible únicamente en SQLite.');
+  }
+  await deleteSQLiteAlert(id, userId);
+}

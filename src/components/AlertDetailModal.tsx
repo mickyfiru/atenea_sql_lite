@@ -6,11 +6,15 @@ import { CommunityAlert, CommunityGroup, UserLocation } from '../types/domain';
 import { getAlertCategoryTone } from '../utils/alerts';
 import { formatRelativeTime } from '../utils/dates';
 import { formatDistance, getAlertDistanceKm } from '../utils/distance';
+import { PrimaryButton } from './PrimaryButton';
 
 type AlertDetailModalProps = {
   alert?: CommunityAlert;
   group?: CommunityGroup;
   onClose: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
+  deleting?: boolean;
   userLocation?: UserLocation;
 };
 
@@ -18,6 +22,9 @@ export function AlertDetailModal({
   alert,
   group,
   onClose,
+  onEdit,
+  onDelete,
+  deleting,
   userLocation,
 }: AlertDetailModalProps) {
   if (!alert) {
@@ -57,6 +64,17 @@ export function AlertDetailModal({
             <View style={styles.videoBox}>
               <Ionicons name="videocam-outline" size={28} color={colors.primary} />
               <Text style={styles.videoText}>Video adjunto</Text>
+            </View>
+          ) : null}
+          {onEdit && onDelete ? (
+            <View style={styles.actions}>
+              <PrimaryButton label="Editar" onPress={onEdit} disabled={deleting} />
+              <PrimaryButton
+                label={deleting ? 'Eliminando...' : 'Eliminar'}
+                onPress={onDelete}
+                disabled={deleting}
+                variant="light"
+              />
             </View>
           ) : null}
         </View>
@@ -144,5 +162,9 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 14,
     fontWeight: '900',
+  },
+  actions: {
+    gap: 8,
+    marginTop: 16,
   },
 });

@@ -81,6 +81,16 @@ node .\node_modules\expo\bin\cli start --lan --port 8081
 
 Para volver al modo predeterminado, reiniciar Metro con `$env:EXPO_PUBLIC_ATENEA_ALERT_PROVIDER = $null` y volver a abrir la aplicación.
 
-## Pendiente · CRUD visual
+## Paso 5 · CRUD visual de alertas en SQLite
 
-El formulario y el listado existentes permiten crear y consultar. Queda exponer edición y eliminación desde la interfaz, definir permisos para esas acciones y refrescar las suscripciones tras ambas operaciones.
+- En Perfil → Revisar alertas → detalle, las alertas propias muestran **Editar** y **Eliminar** cuando SQLite está activo. La edición reutiliza el formulario y permite cambiar título, descripción y categoría. Conserva el ID, la fecha, el grupo, la ubicación y los adjuntos. El borrado solicita confirmación y muestra el resultado.
+- El servicio exige la sesión Firebase correspondiente, comprueba el autor de la fila y revalida la membresía del grupo. Java aplica un predicado de propietario en las sentencias de actualización y borrado, usando `createdBy` y recurriendo a `userId` cuando falta. El UID se obtiene de la sesión en la capa de servicio y se pasa al módulo. Java verifica ese UID contra SQLite. Cada escritura exitosa refresca los suscriptores del grupo.
+- Firebase sigue siendo el proveedor predeterminado. Su detalle no muestra estas acciones y sus reglas de escritura se conservan.
+
+### Verificación local
+
+Pasaron `tsc --noEmit` y la compilación Gradle de depuración para `x86_64`. Antes de incorporar los controles, el diagnóstico Java en el emulador API 37 rechazó una actualización y un borrado con el UID sintético de otro autor. Confirmó que el registro seguía intacto, probó la operación con el propietario y limpió el registro de diagnóstico.
+
+En la interfaz se creó `ATENEA-CRUD5-7D21`, se abrió desde el listado, y se editaron título y descripción. Se comprobó el detalle actualizado y se consultó una copia local de la base en modo de solo lectura. Los cambios sobrevivieron a un cierre completo y al arranque de un proceso nuevo. Tras confirmar **Eliminar**, se mostró el mensaje de éxito y se verificó la ausencia del registro tanto en la interfaz como mediante consulta SQLite. El registro del paso 4B permaneció visible en modo local. No se usó una segunda cuenta Firebase en la prueba de propiedad.
+
+Al iniciar sin el selector SQLite, el emulador recibió snapshots de Firestore y el detalle de una alerta de Firebase apareció sin las nuevas acciones. Persistió la advertencia de registro de notificaciones push de Firebase Messaging. No se usaron compilaciones en la nube.

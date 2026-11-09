@@ -11,9 +11,11 @@ export async function runSQLiteAlertDiagnostic(phase: 'seed' | 'verify', runId: 
   check(/^[a-f0-9]{32}$/.test(runId), 'Se requiere un identificador de prueba único.');
   check(getJavaBridgeDiagnostic() === 'ATENEA_JAVA_OK', 'El puente Java no respondió.');
   const id = `atenea-sqlite-test-${runId}`;
+  const owner = `${id}-owner`;
   const fixture: CommunityAlert = {
     id,
     groupId: id,
+    createdBy: owner,
     title: "Prueba de SQLite 'ATENEA'",
     description: 'Registro de diagnóstico',
     category: 'Tránsito',
@@ -40,7 +42,11 @@ export async function runSQLiteAlertDiagnostic(phase: 'seed' | 'verify', runId: 
     const byGroup = await sqliteAlerts.list(fixture.groupId);
     check(byGroup.length === 1 && byGroup[0].id === id, 'La consulta por grupo falló.');
     check((await sqliteAlerts.list()).some((alert) => alert.id === id), 'La consulta general falló.');
-    check(await sqliteAlerts.update({ ...fixture, title: updatedTitle, latitude: undefined, longitude: undefined }), 'Falló la actualización.');
+    check(!(await sqliteAlerts.update(id, `${id}-other`, { ...fixture, title: 'Edición ajena' })), 'Java permitió una edición ajena.');
+    check(!(await sqliteAlerts.delete(id, `${id}-other`)), 'Java permitió un borrado ajeno.');
+    check((await sqliteAlerts.find(id))?.title === fixture.title, 'La alerta cambió pese al rechazo.');
+    console.log('[ATENEA SQLite] NATIVE_OWNERSHIP_OK');
+    check(await sqliteAlerts.update(id, owner, { ...fixture, title: updatedTitle }), 'Falló la actualización.');
     check((await sqliteAlerts.find(id))?.title === updatedTitle, 'No se encontró el título actualizado.');
     console.log('[ATENEA SQLite] ATENEA_JAVA_OK SEED_OK', id);
     return;
@@ -49,10 +55,10 @@ export async function runSQLiteAlertDiagnostic(phase: 'seed' | 'verify', runId: 
   check(
     existing?.groupId === fixture.groupId && existing.description === fixture.description &&
       existing.title === updatedTitle && existing.createdAt.getTime() === fixture.createdAt.getTime() &&
-      existing.latitude === undefined && existing.longitude === undefined,
+      existing.latitude === fixture.latitude && existing.longitude === fixture.longitude,
     'El registro actualizado no persistió tras reiniciar.',
   );
-  check(await sqliteAlerts.delete(id), 'Falló el borrado del registro de prueba.');
+  check(await sqliteAlerts.delete(id, owner), 'Falló el borrado del registro de prueba.');
   check((await sqliteAlerts.find(id)) === null, 'El registro de prueba sigue presente.');
   check((await sqliteAlerts.list(fixture.groupId)).length === 0, 'El grupo de prueba contiene registros.');
   console.log('[ATENEA SQLite] ATENEA_JAVA_OK PERSISTENCE_AND_DELETE_OK', id);

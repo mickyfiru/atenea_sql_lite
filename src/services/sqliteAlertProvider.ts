@@ -1,13 +1,53 @@
 import { onAuthStateChanged } from 'firebase/auth';
 import { collection, doc, getDocFromServer, onSnapshot, query, where } from 'firebase/firestore';
 
-import { assertAuthenticatedUser } from '../utils/validation';
+import type { CommunityAlert } from '../types/domain';
+import { assertAuthenticatedUser, assertNonEmptyText, assertValidAlertCategory } from '../utils/validation';
 import type { AlertProvider } from './alertProvider';
 import { auth, db } from './firebase';
 import { sqliteAlerts } from './nativeBridge';
 import { markAlertSoundHandled } from './sounds';
 
 const refreshListeners = new Set<(groupId: string) => void>();
+
+export type AlertEdits = Pick<CommunityAlert, 'title' | 'description' | 'category'>;
+
+export function isAlertOwner(alert: CommunityAlert, userId?: string) {
+  return Boolean(userId && (alert.createdBy || alert.userId) === userId);
+}
+
+async function requireOwnedAlert(id: string, userId: string) {
+  assertAuthenticatedUser(auth?.currentUser, userId);
+  const alert = await sqliteAlerts.find(id);
+  if (!alert || !isAlertOwner(alert, userId)) {
+    throw new Error('Solo puedes modificar tus propias alertas.');
+  }
+  await assertSQLiteAlertGroupMember(alert.groupId, userId);
+  return alert;
+}
+
+function notifyGroup(groupId: string) {
+  refreshListeners.forEach((refresh) => refresh(groupId));
+}
+
+export async function updateSQLiteAlert(id: string, userId: string, edits: AlertEdits) {
+  const title = edits.title.trim();
+  assertNonEmptyText(title, 'Ingresa un titulo para la alerta.');
+  assertValidAlertCategory(edits.category);
+  const alert = await requireOwnedAlert(id, userId);
+  if (!(await sqliteAlerts.update(id, userId, { ...edits, title, description: edits.description.trim() }))) {
+    throw new Error('La alerta ya no está disponible para editar.');
+  }
+  notifyGroup(alert.groupId);
+}
+
+export async function deleteSQLiteAlert(id: string, userId: string) {
+  const alert = await requireOwnedAlert(id, userId);
+  if (!(await sqliteAlerts.delete(id, userId))) {
+    throw new Error('La alerta ya no está disponible para eliminar.');
+  }
+  notifyGroup(alert.groupId);
+}
 
 function groupCollection() {
   if (!db) {
@@ -35,7 +75,7 @@ export const sqliteAlertProvider: AlertProvider = {
     const id = `local-${createdAt.getTime()}-${Math.random().toString(36).slice(2)}`;
     await sqliteAlerts.create({ ...alert, id, createdAt });
     markAlertSoundHandled(id);
-    refreshListeners.forEach((refresh) => refresh(alert.groupId));
+    notifyGroup(alert.groupId);
     return id;
   },
 

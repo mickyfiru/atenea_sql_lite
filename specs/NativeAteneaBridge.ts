@@ -24,8 +24,8 @@ export interface Spec extends TurboModule {
   insertAlert(alert: SQLiteAlert): Promise<void>;
   listAlerts(groupId: string | null): Promise<SQLiteAlert[]>;
   findAlert(id: string): Promise<SQLiteAlert | null>;
-  updateAlert(alert: SQLiteAlert): Promise<boolean>;
-  deleteAlert(id: string): Promise<boolean>;
+  updateAlert(id: string, actorId: string, title: string, description: string, category: string): Promise<boolean>;
+  deleteAlert(id: string, actorId: string): Promise<boolean>;
 }
 
 export default TurboModuleRegistry.get<Spec>('NativeAteneaBridge');

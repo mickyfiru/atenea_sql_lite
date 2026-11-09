@@ -13,13 +13,14 @@ import {
 } from 'react-native';
 
 import { colors, radius } from '../constants/theme';
-import { ALERT_CATEGORIES, createAlert } from '../services/alerts';
+import { ALERT_CATEGORIES, createAlert, updateAlert } from '../services/alerts';
 import { uploadAlertMedia } from '../services/media';
-import { AlertCategory, CommunityGroup } from '../types/domain';
+import { AlertCategory, CommunityAlert, CommunityGroup } from '../types/domain';
 import { getAlertCategoryTone } from '../utils/alerts';
 import { PrimaryButton } from './PrimaryButton';
 
 type AlertComposerModalProps = {
+  editingAlert?: CommunityAlert;
   groups: CommunityGroup[];
   initialCategory?: AlertCategory;
   initialDescription?: string;
@@ -33,6 +34,7 @@ type AlertComposerModalProps = {
 };
 
 export function AlertComposerModal({
+  editingAlert,
   groups,
   initialCategory = 'Seguridad',
   initialDescription = '',
@@ -51,15 +53,19 @@ export function AlertComposerModal({
   const [media, setMedia] = useState<ImagePicker.ImagePickerAsset>();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const initialCategoryValue = editingAlert?.category ?? initialCategory;
+  const initialDescriptionValue = editingAlert?.description ?? initialDescription;
+  const initialGroupValue = editingAlert?.groupId ?? initialGroupId;
+  const initialTitleValue = editingAlert?.title ?? initialTitle;
 
   useEffect(() => {
     if (visible) {
-      setCategory(initialCategory);
-      setDescription(initialDescription);
-      setGroupId(initialGroupId);
-      setTitle(initialTitle);
+      setCategory(initialCategoryValue);
+      setDescription(initialDescriptionValue);
+      setGroupId(initialGroupValue);
+      setTitle(initialTitleValue);
     }
-  }, [initialCategory, initialDescription, initialGroupId, initialTitle, visible]);
+  }, [initialCategoryValue, initialDescriptionValue, initialGroupValue, initialTitleValue, visible]);
 
   const selectedGroupId = groupId || groups[0]?.id || '';
 
@@ -81,6 +87,12 @@ export function AlertComposerModal({
     setError('');
 
     try {
+      if (editingAlert) {
+        await updateAlert(editingAlert.id, userId, { category, title, description });
+        onClose();
+        return;
+      }
+
       let mediaUrl: string | undefined;
       let mediaUploadFailed = false;
 
@@ -120,7 +132,7 @@ export function AlertComposerModal({
       onClose();
     } catch (submitError) {
       onCreateFailed?.();
-      setError(submitError instanceof Error ? submitError.message : 'No pudimos crear la alerta.');
+      setError(submitError instanceof Error ? submitError.message : 'No pudimos guardar la alerta.');
     } finally {
       setSaving(false);
     }
@@ -192,8 +204,10 @@ export function AlertComposerModal({
     <Modal animationType="fade" transparent visible={visible} onRequestClose={close}>
       <View style={styles.overlay}>
         <View style={styles.card}>
-          <Text style={styles.title}>Crear alerta</Text>
-          <Text style={styles.subtitle}>Selecciona categoria y grupo asociado.</Text>
+          <Text style={styles.title}>{editingAlert ? 'Editar alerta' : 'Crear alerta'}</Text>
+          <Text style={styles.subtitle}>
+            {editingAlert ? 'Actualiza el título, la descripción o la categoría.' : 'Selecciona categoria y grupo asociado.'}
+          </Text>
 
           <View style={styles.categoryRow}>
             {ALERT_CATEGORIES.map((nextCategory) => {
@@ -203,6 +217,7 @@ export function AlertComposerModal({
               return (
                 <Pressable
                   key={nextCategory}
+                  disabled={saving}
                   onPress={() => setCategory(nextCategory)}
                   style={[
                     styles.categoryButton,
@@ -223,12 +238,13 @@ export function AlertComposerModal({
           </View>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.groupScroller}>
-            {groups.map((group) => {
+            {groups.filter((group) => !editingAlert || group.id === editingAlert.groupId).map((group) => {
               const active = selectedGroupId === group.id;
 
               return (
                 <Pressable
                   key={group.id}
+                  disabled={Boolean(editingAlert)}
                   onPress={() => setGroupId(group.id)}
                   style={[styles.groupChip, active && styles.groupChipActive]}
                 >
@@ -264,7 +280,7 @@ export function AlertComposerModal({
             value={description}
           />
 
-          <View style={styles.mediaActions}>
+          {!editingAlert ? <View style={styles.mediaActions}>
             <Pressable disabled={saving} onPress={takePhoto} style={styles.mediaButton}>
               <Ionicons name="camera-outline" size={20} color={colors.primary} />
               <Text style={styles.mediaButtonText}>Tomar foto</Text>
@@ -273,9 +289,9 @@ export function AlertComposerModal({
               <Ionicons name="image-outline" size={20} color={colors.primary} />
               <Text style={styles.mediaButtonText}>Galeria</Text>
             </Pressable>
-          </View>
+          </View> : null}
 
-          {media ? (
+          {media && !editingAlert ? (
             <View style={styles.previewWrap}>
               {media.type === 'video' ? (
                 <View style={styles.videoPreview}>
@@ -300,7 +316,7 @@ export function AlertComposerModal({
           <View style={styles.actions}>
             <PrimaryButton
               disabled={saving || !userId || !groups.length}
-              label={saving ? 'Guardando...' : 'Guardar alerta'}
+              label={saving ? 'Guardando...' : editingAlert ? 'Guardar cambios' : 'Guardar alerta'}
               onPress={submit}
               style={styles.actionButton}
             />

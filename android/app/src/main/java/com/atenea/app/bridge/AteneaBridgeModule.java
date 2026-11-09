@@ -46,13 +46,13 @@ public final class AteneaBridgeModule extends NativeAteneaBridgeSpec {
   }
 
   @Override
-  public void updateAlert(ReadableMap alert, Promise promise) {
-    runDatabaseOperation(promise, () -> alerts.update(alert));
+  public void updateAlert(String id, String actorId, String title, String description, String category, Promise promise) {
+    runDatabaseOperation(promise, () -> alerts.update(id, actorId, title, description, category));
   }
 
   @Override
-  public void deleteAlert(String id, Promise promise) {
-    runDatabaseOperation(promise, () -> alerts.delete(id));
+  public void deleteAlert(String id, String actorId, Promise promise) {
+    runDatabaseOperation(promise, () -> alerts.delete(id, actorId));
   }
 
   private synchronized void runDatabaseOperation(Promise promise, Supplier<Object> operation) {
