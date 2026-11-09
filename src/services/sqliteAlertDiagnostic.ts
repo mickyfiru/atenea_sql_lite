@@ -7,6 +7,16 @@ function check(condition: boolean, message: string): asserts condition {
   }
 }
 
+async function expectRejected(operation: () => Promise<unknown>, expected: RegExp) {
+  try {
+    await operation();
+  } catch (error) {
+    check(error instanceof Error && expected.test(error.message), 'La operación falló por un motivo inesperado.');
+    return;
+  }
+  throw new Error('Se aceptó una operación inválida.');
+}
+
 export async function runSQLiteAlertDiagnostic(phase: 'seed' | 'verify', runId: string) {
   check(/^[a-f0-9]{32}$/.test(runId), 'Se requiere un identificador de prueba único.');
   check(getJavaBridgeDiagnostic() === 'ATENEA_JAVA_OK', 'El puente Java no respondió.');
@@ -31,7 +41,23 @@ export async function runSQLiteAlertDiagnostic(phase: 'seed' | 'verify', runId: 
 
   if (phase === 'seed') {
     check(existing === null, 'El identificador de prueba ya existe.');
+    const invalidInputs: [Partial<CommunityAlert>, RegExp][] = [
+      [{ title: '' }, /Ingresa/],
+      [{ title: '   ' }, /Ingresa/],
+      [{ title: 'a'.repeat(121) }, /120/],
+      [{ description: 'a'.repeat(2001) }, /2000/],
+      [{ category: 'Inválida' as CommunityAlert['category'] }, /Categoría/],
+    ];
+    for (const [changes, expected] of invalidInputs) {
+      await expectRejected(() => sqliteAlerts.create({ ...fixture, ...changes }), expected);
+    }
+    check((await sqliteAlerts.find(id)) === null, 'Una creación fallida dejó un registro.');
     await sqliteAlerts.create(fixture);
+    await expectRejected(() => sqliteAlerts.create(fixture), /UNIQUE constraint failed/);
+    for (const [changes, expected] of invalidInputs) {
+      await expectRejected(() => sqliteAlerts.update(id, owner, { ...fixture, ...changes }), expected);
+    }
+    check((await sqliteAlerts.list(`${id}-other-group`)).length === 0, 'Se devolvió una alerta de otro grupo.');
     const created = await sqliteAlerts.find(id);
     check(
       created?.title === fixture.title && created.latitude === fixture.latitude &&
@@ -45,6 +71,7 @@ export async function runSQLiteAlertDiagnostic(phase: 'seed' | 'verify', runId: 
     check(!(await sqliteAlerts.update(id, `${id}-other`, { ...fixture, title: 'Edición ajena' })), 'Java permitió una edición ajena.');
     check(!(await sqliteAlerts.delete(id, `${id}-other`)), 'Java permitió un borrado ajeno.');
     check((await sqliteAlerts.find(id))?.title === fixture.title, 'La alerta cambió pese al rechazo.');
+    console.log('[ATENEA SQLite] VALIDATION_AND_ATOMICITY_OK');
     console.log('[ATENEA SQLite] NATIVE_OWNERSHIP_OK');
     check(await sqliteAlerts.update(id, owner, { ...fixture, title: updatedTitle }), 'Falló la actualización.');
     check((await sqliteAlerts.find(id))?.title === updatedTitle, 'No se encontró el título actualizado.');

@@ -24,7 +24,9 @@ final class AteneaAlertDao {
   }
 
   void insert(ReadableMap alert) {
-    helper.getWritableDatabase().insertOrThrow(TABLE, null, values(alert));
+    ContentValues row = values(alert);
+    validateContent(row.getAsString("title"), row.getAsString("description"), row.getAsString("category"));
+    helper.getWritableDatabase().insertOrThrow(TABLE, null, row);
   }
 
   WritableArray list(String groupId) {
@@ -47,6 +49,7 @@ final class AteneaAlertDao {
   }
 
   boolean update(String id, String actorId, String title, String description, String category) {
+    validateContent(title, description, category);
     ContentValues changes = new ContentValues();
     changes.put("title", title);
     changes.put("description", description);
@@ -57,6 +60,22 @@ final class AteneaAlertDao {
 
   boolean delete(String id, String actorId) {
     return helper.getWritableDatabase().delete(TABLE, BY_OWNER, new String[] {id, actorId}) == 1;
+  }
+
+  private static void validateContent(String title, String description, String category) {
+    if (title == null || title.trim().isEmpty()) {
+      throw new IllegalArgumentException("Ingresa un título para la alerta.");
+    }
+    if (title.length() > 120) {
+      throw new IllegalArgumentException("El título admite hasta 120 caracteres.");
+    }
+    if (description == null || description.length() > 2000) {
+      throw new IllegalArgumentException("La descripción admite hasta 2000 caracteres.");
+    }
+    if (!"Seguridad".equals(category) && !"Tránsito".equals(category)
+        && !"Comunidad".equals(category) && !"Servicios".equals(category)) {
+      throw new IllegalArgumentException("Categoría de alerta no válida.");
+    }
   }
 
   private static ContentValues values(ReadableMap alert) {
