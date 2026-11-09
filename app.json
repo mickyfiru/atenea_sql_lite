@@ -1,0 +1,79 @@
+{
+  "expo": {
+    "name": "atenea",
+    "slug": "atenea",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.atenea.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "@rnmapbox/maps",
+        {
+          "RNMapboxMapsVersion": "11.20.1"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "ATENEA usa tu ubicacion para mostrar alertas cercanas en el mapa."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "ATENEA usa tu galeria para adjuntar evidencia a una alerta.",
+          "cameraPermission": "ATENEA usa tu camara para tomar evidencia de una alerta."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "sounds": [
+            "./assets/sounds/security.wav",
+            "./assets/sounds/traffic.wav",
+            "./assets/sounds/community.wav",
+            "./assets/sounds/services.wav"
+          ]
+        }
+      ],
+      "expo-font",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "ATENEA usa el microfono para convertir tus comandos de voz en texto.",
+          "speechRecognitionPermission": "ATENEA usa reconocimiento de voz para interpretar comandos comunitarios.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "408f5020-1966-4689-9bcb-79125196f371"
+      }
+    }
+  }
+}

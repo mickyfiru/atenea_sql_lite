@@ -1,0 +1,217 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isString(value) {
+      return value is string;
+    }
+
+    function isNonEmptyString(value) {
+      return isString(value) && value.size() > 0;
+    }
+
+    function isValidCategory(category) {
+      return category in ['Seguridad', 'Tránsito', 'Comunidad', 'Servicios'];
+    }
+
+    function isValidLatitude(latitude) {
+      return latitude is number && latitude >= -90 && latitude <= 90;
+    }
+
+    function isValidLongitude(longitude) {
+      return longitude is number && longitude >= -180 && longitude <= 180;
+    }
+
+    function isValidOptionalCoordinates(data) {
+      return (
+        data.latitude == null &&
+        data.longitude == null
+      ) || (
+        isValidLatitude(data.latitude) &&
+        isValidLongitude(data.longitude)
+      );
+    }
+
+    function groupPath(groupId) {
+      return /databases/$(database)/documents/groups/$(groupId);
+    }
+
+    function groupExists(groupId) {
+      return exists(groupPath(groupId));
+    }
+
+    function isGroupMember(groupId) {
+      return isSignedIn() &&
+        groupExists(groupId) &&
+        request.auth.uid in get(groupPath(groupId)).data.members;
+    }
+
+    function isGroupMemberResource() {
+      return isSignedIn() &&
+        request.auth.uid in resource.data.members;
+    }
+
+    function isDefaultEmergencyGroup(groupId) {
+      return groupId in ['default-firefighters', 'default-police', 'default-ambulance'];
+    }
+
+    function isPublicEmergencyGroup() {
+      return resource.data.type == 'emergency';
+    }
+
+    function validUserDocument(userId) {
+      return request.resource.data.keys().hasOnly([
+        'id',
+        'phoneNumber',
+        'displayName',
+        'createdAt',
+        'locationEnabled',
+        'latitude',
+        'longitude',
+        'city',
+        'district',
+        'expoPushToken',
+        'notificationsEnabled',
+        'notificationsUpdatedAt',
+        'updatedAt'
+      ]) &&
+      request.resource.data.id == userId &&
+      request.resource.data.locationEnabled is bool &&
+      isValidOptionalCoordinates(request.resource.data) &&
+      isString(request.resource.data.city) &&
+      isString(request.resource.data.district) &&
+      isString(request.resource.data.expoPushToken) &&
+      request.resource.data.notificationsEnabled is bool;
+    }
+
+    function validGroupDocument(groupId) {
+      return request.resource.data.keys().hasOnly([
+        'id',
+        'name',
+        'type',
+        'createdBy',
+        'members',
+        'createdAt',
+        'lastMessage',
+        'lastMessageAt'
+      ]) &&
+      request.resource.data.id == groupId &&
+      isNonEmptyString(request.resource.data.name) &&
+      request.resource.data.type in ['emergency', 'community'] &&
+      request.resource.data.createdBy == request.auth.uid &&
+      request.resource.data.members is list &&
+      request.auth.uid in request.resource.data.members;
+    }
+
+    function isJoiningSelf() {
+      return request.resource.data.diff(resource.data).changedKeys().hasOnly(['members']) &&
+        !(request.auth.uid in resource.data.members) &&
+        request.auth.uid in request.resource.data.members;
+    }
+
+    function isUpdatingGroupActivity() {
+      return request.resource.data.diff(resource.data).changedKeys().hasOnly([
+        'lastMessage',
+        'lastMessageAt'
+      ]) &&
+      isNonEmptyString(request.resource.data.lastMessage);
+    }
+
+    function isUpdatingOwnCreatedGroupId(groupId) {
+      return request.resource.data.diff(resource.data).changedKeys().hasOnly(['id']) &&
+        request.resource.data.id == groupId &&
+        resource.data.createdBy == request.auth.uid;
+    }
+
+    function validMessageDocument() {
+      return request.resource.data.keys().hasOnly([
+        'groupId',
+        'userId',
+        'text',
+        'createdAt'
+      ]) &&
+      isNonEmptyString(request.resource.data.groupId) &&
+      request.resource.data.userId == request.auth.uid &&
+      isNonEmptyString(request.resource.data.text) &&
+      isGroupMember(request.resource.data.groupId);
+    }
+
+    function validAlertDocument() {
+      return request.resource.data.keys().hasOnly([
+        'groupId',
+        'userId',
+        'createdBy',
+        'category',
+        'title',
+        'description',
+        'soundType',
+        'latitude',
+        'longitude',
+        'city',
+        'district',
+        'mediaUrl',
+        'mediaType',
+        'createdAt'
+      ]) &&
+      isNonEmptyString(request.resource.data.groupId) &&
+      request.resource.data.userId == request.auth.uid &&
+      request.resource.data.createdBy == request.auth.uid &&
+      isGroupMember(request.resource.data.groupId) &&
+      isValidCategory(request.resource.data.category) &&
+      request.resource.data.soundType == request.resource.data.category &&
+      isNonEmptyString(request.resource.data.title) &&
+      isString(request.resource.data.description) &&
+      isString(request.resource.data.city) &&
+      isString(request.resource.data.district) &&
+      isString(request.resource.data.mediaUrl) &&
+      request.resource.data.mediaType in ['', 'image', 'video'] &&
+      isValidOptionalCoordinates(request.resource.data);
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId) && validUserDocument(userId);
+      allow delete: if false;
+    }
+
+    match /groups/{groupId} {
+      allow get: if isSignedIn() && (
+        isGroupMemberResource() ||
+        isDefaultEmergencyGroup(groupId) ||
+        isPublicEmergencyGroup()
+      );
+      allow list: if isGroupMemberResource();
+      allow create: if isSignedIn() && validGroupDocument(groupId);
+      allow update: if isSignedIn() && (
+        (isGroupMemberResource() && isUpdatingGroupActivity()) ||
+        isJoiningSelf() ||
+        (isGroupMemberResource() && isUpdatingOwnCreatedGroupId(groupId))
+      );
+      allow delete: if false;
+    }
+
+    match /messages/{messageId} {
+      allow read: if isSignedIn() && isGroupMember(resource.data.groupId);
+      allow create: if isSignedIn() && validMessageDocument();
+      allow update, delete: if false;
+    }
+
+    match /alerts/{alertId} {
+      allow read: if isSignedIn() && isGroupMember(resource.data.groupId);
+      allow create: if isSignedIn() && validAlertDocument();
+      allow update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
