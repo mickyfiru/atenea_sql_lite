@@ -103,3 +103,34 @@ Al iniciar sin el selector SQLite, el emulador recibió snapshots de Firestore y
 - Al activar el modo avión, Android se quedó sin red predeterminada. El editor se desmontó al perder la confirmación de membresía y el intento de guardado sin conexión no llegó a ejecutarse desde la interfaz. La consulta local conservó el último valor guardado y, al recuperar la red, el editor volvió a mostrar ese valor. Un borrador sin guardar se pierde en ese escenario. Para demostrar el flujo completo se necesita conexión a Firebase y, con el APK de depuración, acceso a Metro.
 - Sin el selector, la aplicación volvió a utilizar Firestore. La advertencia de Firebase Messaging corresponde al registro de notificaciones push remotas. Falta la configuración Android de FCM, y el registro de token se captura por separado del CRUD. La demostración de alertas funcionó pese a la advertencia. No se modificó la configuración de Firebase.
 - Quedaron sin ejecutar la prueba con una segunda cuenta real, la revocación de membresía en el servidor y la recepción de push remotas. Tampoco se validó un arranque en frío sin Metro ni una compilación para teléfono ARM.
+
+## Paso 7 · APK local de evaluación sin Metro
+
+Se usó la variante `release` existente de `android/`, con JDK 17, Gradle 9.3.1 y Android SDK 36. Gradle ejecutó `createBundleReleaseJsAndAssets` con Expo `export:embed`. Esta variante ya usa la clave local de depuración del proyecto. La configuración de firma quedó intacta. La compilación se ejecutó con el wrapper Gradle desde PowerShell.
+
+### Reproducir el APK de evaluación
+
+Desde `android/` en una terminal de PowerShell, incluida la terminal de Android Studio:
+
+```powershell
+$env:EXPO_PUBLIC_ATENEA_ALERT_PROVIDER = 'sqlite'
+$env:EXPO_PUBLIC_ENABLE_DEV_LOGIN = 'true'
+$env:EXPO_OFFLINE = '1'
+$env:NODE_ENV = 'production'
+.\gradlew.bat :app:createBundleReleaseJsAndAssets --rerun :app:assembleRelease '-PreactNativeArchitectures=arm64-v8a,x86_64'
+if ($LASTEXITCODE -eq 0) {
+    Copy-Item -LiteralPath app/build/outputs/apk/release/app-release.apk -Destination app/build/outputs/ATENEA-evaluacion-sqlite.apk
+}
+```
+
+`--rerun` vuelve a generar el bundle para incorporar las variables. El acceso anónimo existente se habilita solo para la evaluación. Para una compilación normal, usar el mismo comando Gradle con `EXPO_PUBLIC_ATENEA_ALERT_PROVIDER` y `EXPO_PUBLIC_ENABLE_DEV_LOGIN` sin definir.
+
+### Evidencia
+
+- **APK de evaluación:** `android/app/build/outputs/ATENEA-evaluacion-sqlite.apk`, 100138326 bytes, SHA-256 `AA2359505B7FA3B142EDA454B48D7C38BDFDBFDE0A700EFB8C7ED44D343A3380`. Contiene `assets/index.android.bundle`, recursos empaquetados y las bibliotecas del puente Java y Hermes para `arm64-v8a` y `x86_64`.
+- **Arranque:** se comprobó la firma coincidente con la instalación anterior del emulador API 37 y se usó `adb install -r` para conservar los datos. El APK cargó la interfaz desde un proceso nuevo con Metro detenido y el puerto 8081 libre. La ABI utilizada por el emulador fue `x86_64`. ARM64 se comprobó en el contenido del APK. ADB no detectó un teléfono físico.
+- **CRUD:** se creó `ATENEA-APK7-6F3C`, se consultó desde Perfil → Revisar alertas y se editaron el título y la descripción. Los cambios reaparecieron tras detener y reiniciar la app. El borrado confirmado quitó la alerta del listado. Una consulta de solo lectura en SQLite, mediante una reinstalación temporal del APK de depuración con la misma firma, devolvió cero filas para la prueba y confirmó que la alerta anterior del paso 4B seguía presente.
+- **Firebase:** se compiló e instaló también el APK normal `android/app/build/outputs/apk/release/app-release.apk` sin selector. Mostró alertas de Firestore, registró snapshots y mantuvo las alertas locales fuera del listado. Al terminar se reinstaló el APK de evaluación. Gradle limpió su carpeta `release/` durante la segunda compilación y se recuperó la copia exacta del emulador, verificada por SHA-256, en la ruta indicada arriba.
+- **Límites de la demostración:** la sesión del emulador ya existía. El acceso anónimo en una instalación nueva y la ejecución en ARM64 físico quedaron sin probar. El CRUD requiere internet para la sesión y la confirmación de membresías de Firebase. Persiste la advertencia de registro de push remotas de Firebase Messaging. Gradle emitió advertencias de dependencias obsoletas y rutas largas en CMake, y las compilaciones finalizaron correctamente.
+
+No se modificó código ni configuración de compilación. Los APK quedan fuera de Git. No se usó EAS Build ni firma de producción.
