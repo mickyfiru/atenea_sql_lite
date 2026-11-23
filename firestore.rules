@@ -205,9 +205,44 @@ service cloud.firestore {
     }
 
     match /alerts/{alertId} {
+      function confirmedOwner(data) {
+        let creator = data.get('createdBy', null);
+        let user = data.get('userId', null);
+        return isSignedIn() &&
+          (
+            ('createdBy' in data && creator is string && creator == request.auth.uid) ||
+            ('userId' in data && user is string && user == request.auth.uid)
+          ) &&
+          (!('createdBy' in data) || creator == request.auth.uid) &&
+          (!('userId' in data) || user == request.auth.uid);
+      }
+
+      function validEditableFields(data) {
+        return data.title is string &&
+          data.title.size() <= 120 &&
+          data.title.matches('.*[^\\s].*') &&
+          data.description is string &&
+          data.description.size() <= 2000 &&
+          isValidCategory(data.category);
+      }
+
+      function ownedGroupAlert() {
+        return confirmedOwner(resource.data) &&
+          resource.data.groupId is string &&
+          isGroupMember(resource.data.groupId);
+      }
+
       allow read: if isSignedIn() && isGroupMember(resource.data.groupId);
-      allow create: if isSignedIn() && validAlertDocument();
-      allow update, delete: if false;
+      allow create: if isSignedIn() && validAlertDocument() &&
+        validEditableFields(request.resource.data) &&
+        request.resource.data.createdAt == request.time;
+      allow update: if ownedGroupAlert() &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['title', 'description', 'category']) &&
+        confirmedOwner(request.resource.data) &&
+        request.resource.data.groupId == resource.data.groupId &&
+        validEditableFields(request.resource.data);
+      allow delete: if ownedGroupAlert();
     }
 
     match /{document=**} {

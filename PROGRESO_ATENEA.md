@@ -1,5 +1,128 @@
 # Progreso de ATENEA
 
+## Evaluación Firebase · Paso 5A · Consolidación
+
+Se repitieron TypeScript, las siete pruebas locales de servicios, ocho casos integrados, veintinueve pruebas de reglas y tres pruebas de aislamiento. Todos pasaron. Node informó diez pruebas en la ejecución local y treinta y ocho en la ejecución con emuladores, que incluye el caso padre de integración. La compilación local `:app:compileDebugJavaWithJavac -PreactNativeArchitectures=x86_64` finalizó con código 0. Los mensajes `PERMISSION_DENIED` de las pruebas son los rechazos esperados. Gradle sigue avisando de `NODE_ENV` no definido al invocarlo directamente.
+
+La revisión de archivos pendientes confirmó únicamente servicios Firestore, su contrato y delegaciones, configuración aislada, reglas de alertas, pruebas y documentación. El APK SQLite conservó SHA-256 `AA2359505B7FA3B142EDA454B48D7C38BDFDBFDE0A700EFB8C7ED44D343A3380`. Java, DAO, Codegen, puente y datos SQLite permanecen intactos. No se incluyeron APK, logs, bases ni claves en el commit.
+
+ADB no detectó dispositivos. Existe el AVD `Medium_Phone_API_37.0`, que puede iniciarse desde Android Studio → Device Manager o PowerShell:
+
+```powershell
+& "$env:LOCALAPPDATA/Android/Sdk/emulator/emulator.exe" -avd Medium_Phone_API_37.0
+```
+
+No hay variables de selección de proveedor ni modo de emuladores definidas en el entorno de la verificación. Por tanto, el comportamiento normal selecciona Firebase y el modo de emuladores está desactivado. Para la prueba manual se deben usar explícitamente las variables y comandos del paso 4 antes de iniciar Metro. Confirmar el log `demo-atenea-security` antes de guardar cualquier dato.
+
+Android Emulator accede al equipo anfitrión por `10.0.2.2`. Con el modo local activado, Auth usa `10.0.2.2:9099` y Firestore `10.0.2.2:8180`. Storage apunta también al host local, pero no forma parte de la prueba sin adjuntos. El host se valida y el proyecto ficticio se mantiene separado de la inicialización normal. Las pruebas cerraron sus emuladores al terminar. El arranque manual de Android y su comprobación de conectividad quedan pendientes para la siguiente sesión.
+
+## Evaluación Firebase · Paso 4 · Integración local
+
+Se añadió a `firebase.ts` un modo explícito de desarrollo con `EXPO_PUBLIC_ATENEA_FIREBASE_EMULATORS=true`. Usa una instancia nombrada separada, configuración ficticia y únicamente `demo-atenea-security`. Authentication apunta al puerto 9099, Firestore al 8180 y Storage al 9199 del host local. Storage queda aislado aun si su emulador no está iniciado. El modo rechaza compilaciones release y hosts distintos de localhost, 127.0.0.1 o 10.0.2.2. Sin la variable, la inicialización normal conserva su configuración. No se cambiaron valores de credenciales.
+
+### Resultados automatizados
+
+- TypeScript pasó. Las siete pruebas locales anteriores y tres pruebas nuevas de aislamiento de configuración pasaron.
+- Con Authentication y Firestore Emulator se ejecutaron las 29 pruebas de reglas y ocho casos integrados, además del caso padre de integración. Node informó 38 pruebas aprobadas en esa ejecución. Se usaron cuentas anónimas reales del Auth Emulator, el SDK Firestore instalado y las funciones reales de `alerts.ts` y `firestoreAlertMutations.ts`. Los servicios de consulta de grupo y perfil se adaptaron a lecturas reales del emulador. Las notificaciones y el sonido se sustituyeron por dobles locales.
+- Pasaron CREATE con fecha del servidor, READ, UPDATE y DELETE. Los listeners recibieron alta, edición y borrado. Se conservaron todos los campos no editables y fechas utilizables como `Date`. Las lecturas posteriores confirmaron los cambios y el borrado. Un listener cancelado dejó de recibir eventos.
+- El servicio rechazó ausencia de sesión, otra cuenta y membresía revocada. Un intento directo de otro usuario fue rechazado por las reglas. Una suscripción nueva tras revocar la membresía informó `permission-denied`.
+- Los documentos inexistentes pueden producir `permission-denied` al leer, porque las reglas necesitan datos del documento para autorizarlo. El error se propaga al manejo existente y no se intenta una escritura. El emulador tampoco garantiza retirar inmediatamente datos ya emitidos por un listener antiguo al cambiar solo el documento del grupo. No se modificaron reglas para ampliar lecturas.
+- Las pruebas del selector verificaron la ruta Firebase predeterminada y CREATE, suscripción, UPDATE y DELETE delegados al proveedor SQLite mediante dobles. No constituyen una ejecución de la base Java. Java, el DAO, el contrato Codegen y el puente se compararon con Git y permanecen intactos.
+- Pasó `:app:compileDebugJavaWithJavac -PreactNativeArchitectures=x86_64` localmente. No se generó un APK de producción. ADB no detectó dispositivos y no se ejecutó el CRUD visual Android ni el diagnóstico SQLite nativo en esta sesión.
+
+La primera ejecución del arnés integrado falló por objetos de otro contexto JavaScript y por asumir que la revocación notificaría inmediatamente al listener existente. Se corrigió el arnés para usar el mismo contexto del SDK y verificar una suscripción nueva. Las ejecuciones finales pasaron. No fue necesario rediseñar la interfaz ni modificar el CRUD nativo.
+
+### Prueba manual reproducible en Android Studio
+
+1. Usar un emulador o perfil de prueba aislado, verificar sus datos antes de instalar y conservar los perfiles con información existente.
+2. En una terminal, desde la raíz del repositorio, iniciar los emuladores con Java compatible:
+
+```powershell
+$env:JAVA_HOME = 'C:/Program Files/Android/Android Studio/jbr'
+$env:PATH = "$env:JAVA_HOME/bin;$env:PATH"
+npm exec --yes --package=firebase-tools@15.37.0 -- firebase emulators:start --only firestore,auth --project demo-atenea-security --config firebase.emulator.json
+```
+
+3. En otra terminal, desde la raíz, iniciar Metro para un emulador Android estándar:
+
+```powershell
+$env:EXPO_PUBLIC_ATENEA_FIREBASE_EMULATORS = 'true'
+$env:EXPO_PUBLIC_ATENEA_EMULATOR_HOST = '10.0.2.2'
+$env:EXPO_PUBLIC_ATENEA_ALERT_PROVIDER = $null
+node .\node_modules\expo\bin\cli start --lan --port 8081
+```
+
+4. Abrir `android/` en Android Studio y usar la variante `debug`. Verificar al arrancar que el log indica `demo-atenea-security` antes de crear contenido. Entrar en modo prueba para crear una sesión del Auth Emulator.
+5. Usar un grupo predeterminado local creado por el flujo existente y crear una alerta sin adjuntos desde el formulario original. Abrir Perfil → Revisar alertas, editar título, descripción y categoría, y comprobar la actualización. Eliminar con confirmación y verificar el listado. Probar título vacío y excesivo para comprobar los errores visibles.
+6. Con otra cuenta local, verificar que no aparezcan controles para alertas ajenas. Comprobar también los rechazos del servidor con las pruebas automatizadas. No se inició Storage Emulator, de modo que los adjuntos no forman parte de este procedimiento.
+7. Para revisar SQLite, reiniciar Metro conservando el modo de emuladores y definiendo `EXPO_PUBLIC_ATENEA_ALERT_PROVIDER=sqlite`. Repetir el flujo con registros locales de prueba. Para volver al modo Firebase local, retirar solo el selector SQLite.
+
+El emulador usa datos volátiles por defecto. La persistencia automatizada comprobada es entre lecturas dentro de la ejecución, sin reiniciar el proceso Firestore. Probar persistencia entre reinicios requiere exportar e importar un directorio local de prueba. Quedan pendientes la interfaz Android, la recepción de push, Storage local y dos ediciones autorizadas concurrentes. No se desplegaron reglas, no se escribieron datos reales y se mantuvieron todos los cambios sin commit.
+
+## Evaluación Firebase · Paso 3 · Seguridad en emulador local
+
+Se conservaron los cambios sin commit del paso 2. Node 26.13.0 y npm 11.20.0 estaban disponibles. La CLI Firebase faltaba. Se ejecutó `firebase-tools@15.37.0` desde la caché de npm, sin instalación global ni cambios de dependencias del proyecto. Se usó el Java 25 incluido en Android Studio para Firestore Emulator 1.22.0. El Java 17 del proyecto Android se mantuvo intacto. npm avisó de que una dependencia auxiliar de la CLI declara soporte hasta Node 24. La CLI y las pruebas finalizaron correctamente con el Node disponible.
+
+`firebase.emulator.json` configura exclusivamente Firestore local en `127.0.0.1:8180` y carga las reglas del repositorio. Las pruebas usan el ID ficticio `demo-atenea-security`, tokens sintéticos aceptados por el emulador y datos de prueba descartados al apagarlo. El archivo `firebase.json` de la aplicación conserva su configuración.
+
+### Pruebas ejecutadas
+
+Pasaron `tsc --noEmit`, las 7 pruebas con dobles del SDK de `tests/firestore-alerts.test.cjs` y las 29 pruebas reales de reglas de `tests/firestore-rules.test.cjs`.
+
+| Caso probado en Firestore Emulator | Resultado |
+| --- | --- |
+| Propietario autenticado y miembro del grupo | UPDATE de los tres campos y DELETE permitidos |
+| Otro miembro autenticado o usuario sin sesión | UPDATE y DELETE rechazados |
+| Alerta inexistente | UPDATE y DELETE rechazados |
+| Histórico con solo createdBy o solo userId válido | UPDATE y DELETE permitidos, campos antiguos conservados |
+| Autoría ausente, contradictoria, nula o vacía | UPDATE y DELETE rechazados |
+| Cambiar grupo, cualquiera de los autores, fecha, coordenadas, ciudad, sector, adjuntos o soundType | Escritura rechazada por campos inmutables |
+| Título vacío, en blanco o de 121 caracteres, descripción de 2001 y categoría inválida | Escritura rechazada sin validaciones del cliente |
+| Título de 120, descripción de 2000 y descripción vacía | Escritura permitida |
+| Lectura previa seguida de revocación de membresía | UPDATE y DELETE rechazados al confirmar la escritura |
+| CREATE con los campos de ATENEA y transformación REQUEST_TIME equivalente a serverTimestamp() | Permitido |
+| CREATE con fecha del cliente, sin fecha, título largo o vacío, o autor ajeno | Rechazado |
+
+Las pruebas con dobles verifican además los campos explícitos enviados por el servicio y la propagación de errores de red y permisos. Estas comprobaciones del cliente se distinguen de las reglas ejecutadas en el emulador.
+
+### Reproducir las reglas
+
+Desde PowerShell, con la raíz de ATENEA como directorio actual:
+
+```powershell
+$env:JAVA_HOME = 'C:/Program Files/Android/Android Studio/jbr'
+$env:PATH = "$env:JAVA_HOME/bin;$env:PATH"
+npm exec --yes --package=firebase-tools@15.37.0 -- firebase emulators:exec --only firestore --project demo-atenea-security --config firebase.emulator.json "node --test tests/firestore-rules.test.cjs"
+```
+
+En esta sesión se ejecutó desde la carpeta temporal con rutas absolutas para que los logs generados quedaran fuera del repositorio. Una configuración inicial bajo `tests/` fue rechazada por apuntar a reglas fuera de ese directorio. Se corrigió colocando la configuración independiente en la raíz. No fue necesario cambiar las reglas ni el código de aplicación del paso 2.
+
+### Compatibilidad y riesgos
+
+Firebase conserva la selección predeterminada y SQLite mantiene sus cuatro operaciones. Solo se añadieron dos delegaciones al contrato TypeScript en el paso 2. No hay cambios en Java, Codegen, el puente ni la base SQLite. No se repitió el CRUD visual SQLite durante este paso.
+
+Entre la lectura del cliente y la escritura puede cambiar el documento o la membresía. Las reglas verifican el documento y el grupo al confirmar la escritura y bloquearon la revocación probada. No existe un control de versión para dos ediciones autorizadas simultáneas, por lo que la última escritura puede reemplazar cambios de los mismos campos.
+
+Cambiar categoría conserva `soundType`, conforme a los tres campos editables autorizados. No rompe el almacenamiento y el listener de sonidos no renotifica un ID ya visto al editar. El sonido asociado puede diferir de la categoría si esa alerta vuelve a usarse para una notificación. Alinear ambos campos requiere una decisión de alcance.
+
+Quedan pendientes pruebas integradas del servicio y la interfaz contra emuladores, listeners completos y ejecución en Android con el nuevo proveedor. Persisten los riesgos documentados de reglas de grupos y Storage, sin modificaciones en esta etapa. No se accedió a datos reales, no se desplegaron reglas ni se crearon commits. El emulador se apagó al terminar las pruebas.
+
+## Evaluación Firebase · Paso 2
+
+En la rama `evaluacion-firebase-crud` se añadieron UPDATE y DELETE de Firestore y se habilitaron las acciones existentes para alertas propias. Firebase sigue siendo el proveedor predeterminado. El contrato del proveedor delega edición y borrado a los servicios SQLite existentes cuando se activa su selector.
+
+`firestoreAlertMutations.ts` exige sesión, consulta la alerta y la membresía desde el servidor y aplica `updateDoc` con título, descripción y categoría explícitos o `deleteDoc` sobre la alerta. Los errores del SDK se propagan al manejo existente del formulario y del diálogo. El código conserva ID, autoría, grupo, fecha, ubicación, adjuntos y tipo de sonido. Los listeners `onSnapshot` existentes actualizan listados y detalles.
+
+`firestoreAlertPolicy.ts` valida título obligatorio de hasta 120 unidades UTF-16, descripción opcional de hasta 2000 y categoría. Las entradas se recortan antes de validar límites y guardar. La política de autoría admite un único campo histórico presente o ambos campos coincidentes con el UID. Rechaza campos presentes nulos, vacíos, de otro tipo o contradictorios. La lectura mantiene los valores de autor presentes para que el control visual tampoco normalice una autoría ambigua como válida.
+
+Se prepararon cambios exclusivamente para `alerts` en `firestore.rules`. UPDATE y DELETE exigen propiedad y membresía. UPDATE restringe `affectedKeys()` a título, descripción y categoría, preservando todos los demás campos incluso en documentos históricos. La validación del resultado comprueba los campos editables, autoría y grupo, sin exigir completar otros campos antiguos. CREATE aplica también los límites y exige la fecha del servidor.
+
+Pasaron `node --test tests/firestore-alerts.test.cjs` y `tsc --noEmit`. Las pruebas usan dobles locales del SDK, sin acceso a Firebase real. Cubren límites, espacios, categorías inválidas, autoría histórica y contradictoria, ausencia de sesión, UID distinto, grupo no autorizado, alerta inexistente, campos de escritura explícitos y propagación de errores de red y permisos.
+
+Quedan pendientes la compilación y ejecución de reglas en Firebase Emulator, sus pruebas de manipulación de campos inmutables y las pruebas integradas de listeners, concurrencia y CRUD visual Firestore. El entorno no tiene Firebase CLI, el emulador Firestore ni `@firebase/rules-unit-testing` disponibles. No se desplegaron reglas ni se modificaron datos reales. Hasta desplegar reglas autorizadas, las reglas anteriores pueden seguir rechazando las nuevas operaciones.
+
+Java y la base SQLite permanecen intactos. El adaptador TypeScript SQLite solo agrega la delegación al contrato común. El tipo de sonido se conserva al cambiar categoría en Firebase, conforme al alcance de tres campos editables. Su alineación con la categoría requiere una decisión posterior. Permanecen para otra etapa los riesgos de autoinscripción en grupos y lectura de adjuntos por cualquier usuario autenticado en Storage. No se modificaron esas reglas, credenciales, pantallas ni navegación.
+
 ## Estrategia de evaluación
 
 - `main` conserva el proyecto original en el commit `4d6882b`, con las exclusiones necesarias para versionarlo de forma segura.

@@ -69,6 +69,8 @@ export async function assertSQLiteAlertGroupMember(groupId: string, userId: stri
 }
 
 export const sqliteAlertProvider: AlertProvider = {
+  update: updateSQLiteAlert,
+  delete: deleteSQLiteAlert,
   async insert(alert) {
     assertAuthenticatedUser(auth?.currentUser, alert.userId);
     const createdAt = new Date();

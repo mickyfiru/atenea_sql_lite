@@ -27,12 +27,12 @@ import { getUserLocation } from './location';
 import type { AlertProvider } from './alertProvider';
 import {
   assertSQLiteAlertGroupMember,
-  deleteSQLiteAlert,
   isAlertOwner,
   sqliteAlertProvider,
-  updateSQLiteAlert,
   type AlertEdits,
 } from './sqliteAlertProvider';
+import { isFirestoreAlertOwner, validateFirestoreAlertEdits } from './firestoreAlertPolicy';
+import { deleteFirestoreAlert, updateFirestoreAlert } from './firestoreAlertMutations';
 
 export const ALERT_CATEGORIES: AlertCategory[] = [
   'Seguridad',
@@ -113,7 +113,7 @@ function snapshotToAlert(snapshot: QueryDocumentSnapshot<DocumentData>): Communi
     title: data.title,
     description: data.description,
     soundType: data.soundType ?? data.category,
-    createdBy: data.createdBy ?? data.userId,
+    createdBy: 'createdBy' in data ? data.createdBy : data.userId,
     latitude: typeof data.latitude === 'number' ? data.latitude : undefined,
     longitude: typeof data.longitude === 'number' ? data.longitude : undefined,
     city: data.city ?? '',
@@ -136,6 +136,9 @@ export async function createAlert(input: CreateAlertInput) {
   }
 
   assertNonEmptyText(title, 'Ingresa un titulo para la alerta.');
+  if (!useSQLite) {
+    validateFirestoreAlertEdits({ title, description, category: input.category });
+  }
 
   if (useSQLite) {
     await assertSQLiteAlertGroupMember(input.groupId, input.userId);
@@ -292,6 +295,8 @@ function subscribeFirestoreAlertsForGroups(
 }
 
 const firebaseAlertProvider: AlertProvider = {
+  update: updateFirestoreAlert,
+  delete: deleteFirestoreAlert,
   async insert(alert) {
     const ref = await addDoc(collection(assertFirestore(), 'alerts'), {
       ...alert,
@@ -311,19 +316,13 @@ const alertProvider = useSQLite ? sqliteAlertProvider : firebaseAlertProvider;
 export const subscribeAlertsForGroups: AlertProvider['subscribe'] = alertProvider.subscribe;
 
 export function canManageAlert(alert: CommunityAlert, userId?: string) {
-  return useSQLite && isAlertOwner(alert, userId);
+  return useSQLite ? isAlertOwner(alert, userId) : isFirestoreAlertOwner(alert, userId);
 }
 
 export async function updateAlert(id: string, userId: string, edits: AlertEdits) {
-  if (!useSQLite) {
-    throw new Error('La edición está disponible únicamente en SQLite.');
-  }
-  await updateSQLiteAlert(id, userId, edits);
+  await alertProvider.update(id, userId, edits);
 }
 
 export async function deleteAlert(id: string, userId: string) {
-  if (!useSQLite) {
-    throw new Error('La eliminación está disponible únicamente en SQLite.');
-  }
-  await deleteSQLiteAlert(id, userId);
+  await alertProvider.delete(id, userId);
 }
